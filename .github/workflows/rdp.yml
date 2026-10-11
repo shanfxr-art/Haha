@@ -1,0 +1,52 @@
+name: Windows RDP
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rdp:
+    # Newest Windows image; 4 vCPU / 16 GB RAM on public repos
+    runs-on: windows-2025
+    # 360 min is the maximum GitHub allows for a job
+    timeout-minutes: 360
+    steps:
+      - name: Join Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          hostname: gh-windows
+
+      - name: Performance and session tweaks
+        run: |
+          # High performance power plan, never sleep
+          powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
+          powercfg /change standby-timeout-ac 0
+          powercfg /change monitor-timeout-ac 0
+          # Sound over RDP
+          Set-Service Audiosrv -StartupType Automatic
+          Start-Service Audiosrv
+          # Keep disconnected sessions alive so you can reconnect
+          $ts = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
+          New-Item -Path $ts -Force | Out-Null
+          Set-ItemProperty -Path $ts -Name MaxDisconnectionTime -Value 0 -Type DWord
+          Set-ItemProperty -Path $ts -Name MaxIdleTime -Value 0 -Type DWord
+          # Less background load (throwaway machine)
+          try { Set-MpPreference -DisableRealtimeMonitoring $true } catch { Write-Host "Defender tweak skipped" }
+
+      - name: Enable RDP and create user
+        env:
+          RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name fDenyTSConnections -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          net user rdpuser "$env:RDP_PASSWORD" /add
+          net localgroup Administrators rdpuser /add
+          net localgroup "Remote Desktop Users" rdpuser /add
+
+      - name: Show connection address and keep alive
+        run: |
+          $ip = & tailscale ip -4
+          Write-Host "Connect to: $ip   user: rdpuser"
+          tailscale status
+          $end = (Get-Date).AddMinutes(350)
+          while ((Get-Date) -lt $end) { Start-Sleep -Seconds 60 }
