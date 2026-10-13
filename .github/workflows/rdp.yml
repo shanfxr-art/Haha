@@ -6,7 +6,7 @@ on:
 jobs:
   rdp:
     # Newest Windows image; 4 vCPU / 16 GB RAM on public repos
-    runs-on: windows-2025
+    runs-on: windows-2022
     # 360 min is the maximum GitHub allows for a job
     timeout-minutes: 360
     steps:
