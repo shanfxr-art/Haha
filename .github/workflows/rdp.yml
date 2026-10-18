@@ -2,21 +2,48 @@ name: Windows RDP
 
 on:
   workflow_dispatch:
+    inputs:
+      attempt:
+        description: "Reroll counter (leave as 1)"
+        default: "1"
+
+permissions:
+  actions: write
+  contents: read
 
 jobs:
   rdp:
-    # Closest to Windows 10 still offered (Server 2022); windows-2019 is retired
-    runs-on: windows-2022
+    # Newest Windows image; 4 vCPU / 16 GB RAM on public repos
+    runs-on: windows-2025
     # 360 min is the maximum GitHub allows for a job
     timeout-minutes: 360
     steps:
+      - name: Check CPU, reroll if not 8573C
+        id: cpu
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ATTEMPT: ${{ inputs.attempt }}
+          MAX_ATTEMPTS: "15"
+        run: |
+          $cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1).Name
+          Write-Host "Got CPU: $cpu (attempt $env:ATTEMPT of $env:MAX_ATTEMPTS)"
+          if ($cpu -match '8573C' -or [int]$env:ATTEMPT -ge [int]$env:MAX_ATTEMPTS) {
+            "match=true" >> $env:GITHUB_OUTPUT
+          } else {
+            "match=false" >> $env:GITHUB_OUTPUT
+            $next = [int]$env:ATTEMPT + 1
+            gh workflow run "${{ github.workflow }}" --repo $env:GITHUB_REPOSITORY --ref $env:GITHUB_REF_NAME -f attempt=$next
+          }
+
       - name: Join Tailscale
+        if: steps.cpu.outputs.match == 'true'
         uses: tailscale/github-action@v3
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
           hostname: gh-windows
 
       - name: Performance and session tweaks
+        if: steps.cpu.outputs.match == 'true'
         run: |
           # High performance power plan, never sleep
           powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
@@ -34,6 +61,7 @@ jobs:
           try { Set-MpPreference -DisableRealtimeMonitoring $true } catch { Write-Host "Defender tweak skipped" }
 
       - name: Enable RDP and create user
+        if: steps.cpu.outputs.match == 'true'
         env:
           RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
         run: |
@@ -44,6 +72,7 @@ jobs:
           net localgroup "Remote Desktop Users" rdpuser /add
 
       - name: Show connection address and keep alive
+        if: steps.cpu.outputs.match == 'true'
         run: |
           $ip = & tailscale ip -4
           Write-Host "Connect to: $ip   user: rdpuser"
