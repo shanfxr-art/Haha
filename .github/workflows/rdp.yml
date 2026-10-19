@@ -13,12 +13,12 @@ permissions:
 
 jobs:
   rdp:
-    # Newest Windows image; 4 vCPU / 16 GB RAM on public repos
-    runs-on: windows-2025
+    # Closest to Windows 10 that GitHub still offers
+    runs-on: windows-2022
     # 360 min is the maximum GitHub allows for a job
     timeout-minutes: 360
     steps:
-      - name: Check CPU, reroll if not 8573C
+      - name: Check CPU, reroll if not 9V45
         id: cpu
         env:
           GH_TOKEN: ${{ github.token }}
@@ -27,7 +27,7 @@ jobs:
         run: |
           $cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1).Name
           Write-Host "Got CPU: $cpu (attempt $env:ATTEMPT of $env:MAX_ATTEMPTS)"
-          if ($cpu -match '8573C' -or [int]$env:ATTEMPT -ge [int]$env:MAX_ATTEMPTS) {
+          if ($cpu -match '9V45' -or [int]$env:ATTEMPT -ge [int]$env:MAX_ATTEMPTS) {
             "match=true" >> $env:GITHUB_OUTPUT
           } else {
             "match=false" >> $env:GITHUB_OUTPUT
