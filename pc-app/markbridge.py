@@ -1,6 +1,25 @@
 """Loads every Mark LVI skill (actions/*.py, one TOOL dict each) into the Jarvis registry. Failures skip one file, never the app."""
 import os, pathlib, sys, threading
 BASE = pathlib.Path(__file__).resolve().parent
+
+
+def _heal():
+    """Self-repair for a bad upload: empty __init__.py files can get dropped and the old core.py/actions.py can linger."""
+    import importlib
+    for d in ("core", "memory", "plugins", "providers"):
+        f = BASE / d / "__init__.py"
+        if (BASE / d).is_dir() and not f.exists():
+            f.write_text("# package\n", encoding="utf-8")
+    for old in ("core.py", "actions.py"):
+        try: (BASE / old).unlink()
+        except OSError: pass
+    for m in ("core", "actions"):
+        if m in sys.modules and not hasattr(sys.modules[m], "__path__"):
+            del sys.modules[m]
+    importlib.invalidate_caches()
+
+
+_heal()
 if str(BASE) not in sys.path:
     sys.path.insert(0, str(BASE))
 
