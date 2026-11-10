@@ -1,6 +1,6 @@
 """Jarvis PC app entry. Env: HUB_URL, PC_TOKEN. Runs with the sphere HUD, or headless if the HUD cannot start."""
 import os, sys, threading, time
-import core
+import jcore as core
 
 
 def main():
@@ -25,6 +25,11 @@ def main():
         return (lambda *a: getattr(bridge, sig).emit(*a)) if bridge else (lambda *a: None)
 
     reg = core.build_registry(hud_show=(lambda t, b, s: bridge.card.emit(t, b, s)) if bridge else None)
+    try:
+        import agent, json
+        agent.EVENT = (lambda k, d: bridge.agent.emit(k, json.dumps(d))) if bridge else agent.EVENT
+    except Exception:
+        pass
     log = emit("log")
     hub = core.Hub(url, token, reg, on_state=emit("state"), on_log=lambda m: (print(m, flush=True), log(m)), on_connection=emit("online"))
     threading.Thread(target=hub.run, daemon=True).start()

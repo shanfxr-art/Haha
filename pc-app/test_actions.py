@@ -1,7 +1,8 @@
 """Offline test for actions.py with a fake mouse/keyboard. Run: python3 test_actions.py"""
+import os; os.environ['JARVIS_OPEN']='0'
 import os, sys, tempfile, time, types
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import core, actions
+import jcore as core, jactions as actions
 
 ok = bad = 0
 def check(n, c):

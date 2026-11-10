@@ -1,7 +1,8 @@
 """Tests core.py against the REAL hub code. Run: HUB_DIR=/path/to/hub python3 test_core.py  (needs node)"""
+import os; os.environ['JARVIS_OPEN']='0'
 import json, os, shutil, subprocess, sys, tempfile, threading, time, urllib.request
 sys.path.insert(0, os.path.dirname(__file__))
-import core
+import jcore as core
 from PIL import Image
 
 HUB_DIR = os.environ.get("HUB_DIR", "")
