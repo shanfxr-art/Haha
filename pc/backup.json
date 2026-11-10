@@ -1,6 +1,18 @@
 {
-  "paths": ["%WORK%"],
-  "exclude": ["*.tmp", "Cache", "node_modules"],
+  "paths": [
+    "%WORK%"
+  ],
+  "exclude": [
+    "*.tmp",
+    "Cache",
+    "CacheStorage",
+    "Code Cache",
+    "Crashpad",
+    "GPUCache",
+    "GrShaderCache",
+    "ShaderCache",
+    "node_modules"
+  ],
   "keep": 4,
   "intervalMin": 20,
   "handoverMin": 345,
