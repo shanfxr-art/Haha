@@ -26,12 +26,12 @@ jobs:
       - name: Check and package
         id: pkg
         run: |
-          python3 -m py_compile pc-app/core.py pc-app/hud.py pc-app/main.py
-          VN=$(grep -oP 'VERSION = "\K[^"]+' pc-app/core.py | head -n 1)
-          test -n "$VN" || { echo "VERSION not found in pc-app/core.py"; exit 1; }
+          python3 -m compileall -q pc-app
+          VN=$(grep -oP 'VERSION = "\K[^"]+' pc-app/jcore.py | head -n 1)
+          test -n "$VN" || { echo "VERSION not found in pc-app/jcore.py"; exit 1; }
           NAME="Jarvis-PC-v${VN}-build${GITHUB_RUN_NUMBER}.zip"
           mkdir -p dist
-          (cd pc-app && zip -qr "../dist/$NAME" . -x 'test_*' -x '__pycache__/*' -x '*.pyc')
+          (cd pc-app && zip -qr "../dist/$NAME" . -x 'test_*' -x '*__pycache__*' -x '*.pyc')
           (cd dist && sha256sum "$NAME" > "$NAME.sha256")
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           echo "vn=$VN" >> "$GITHUB_OUTPUT"
