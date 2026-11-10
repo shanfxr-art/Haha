@@ -1,67 +1,76 @@
 name: Windows RDP
 
+# One Windows VM that keeps itself running. GitHub stops any job after 6 hours, so at minute 340
+# the job starts the next run of itself. A cheap check every 20 minutes restarts the chain if it
+# ever breaks (it never starts a second VM while one is running).
 on:
   workflow_dispatch:
-    inputs:
-      attempt:
-        description: "Reroll counter (leave as 1)"
-        default: "1"
+  schedule:
+    - cron: "*/20 * * * *"
 
 permissions:
   actions: write
   contents: read
 
 jobs:
-  rdp:
-    # Closest to Windows 10 that GitHub still offers
-    runs-on: windows-2022
-    # 360 min is the maximum GitHub allows for a job
-    timeout-minutes: 360
+  guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      go: ${{ steps.check.outputs.go }}
     steps:
-      - name: Check CPU, reroll if not 9V45
-        id: cpu
+      - id: check
         env:
           GH_TOKEN: ${{ github.token }}
-          ATTEMPT: ${{ inputs.attempt }}
-          MAX_ATTEMPTS: "15"
         run: |
-          $cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1).Name
-          Write-Host "Got CPU: $cpu (attempt $env:ATTEMPT of $env:MAX_ATTEMPTS)"
-          if ($cpu -match '9V45' -or [int]$env:ATTEMPT -ge [int]$env:MAX_ATTEMPTS) {
-            "match=true" >> $env:GITHUB_OUTPUT
-          } else {
-            "match=false" >> $env:GITHUB_OUTPUT
-            $next = [int]$env:ATTEMPT + 1
-            gh workflow run "${{ github.workflow }}" --repo $env:GITHUB_REPOSITORY --ref $env:GITHUB_REF_NAME -f attempt=$next
-          }
+          if [ "${{ github.event_name }}" != "schedule" ]; then echo "go=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          BUSY=0
+          for s in in_progress queued; do
+            N=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow "${{ github.workflow }}" --status $s --json databaseId --jq 'length')
+            BUSY=$((BUSY + N))
+          done
+          # this guard run itself counts as one in_progress run
+          if [ "$BUSY" -gt 1 ]; then echo "A VM run is already active; nothing to do."; echo "go=false" >> "$GITHUB_OUTPUT"
+          else echo "go=true" >> "$GITHUB_OUTPUT"; fi
+
+  rdp:
+    needs: guard
+    if: needs.guard.outputs.go == 'true'
+    # Closest thing to Windows 10 that GitHub still offers (Windows 11 images are heavier)
+    runs-on: windows-2022
+    timeout-minutes: 360
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HUB_URL: ${{ secrets.HUB_URL }}
+      PC_TOKEN: ${{ secrets.PC_TOKEN }}
+      PC_RELEASE_REPO: ${{ secrets.PC_RELEASE_REPO }}
+      PC_RELEASE_TOKEN: ${{ secrets.PC_RELEASE_TOKEN }}
+      GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+      GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+      GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Join Tailscale
-        if: steps.cpu.outputs.match == 'true'
         uses: tailscale/github-action@v3
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
           hostname: gh-windows
 
       - name: Performance and session tweaks
-        if: steps.cpu.outputs.match == 'true'
         run: |
-          # High performance power plan, never sleep
           powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
           powercfg /change standby-timeout-ac 0
           powercfg /change monitor-timeout-ac 0
-          # Sound over RDP
           Set-Service Audiosrv -StartupType Automatic
           Start-Service Audiosrv
-          # Keep disconnected sessions alive so you can reconnect
           $ts = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services'
           New-Item -Path $ts -Force | Out-Null
           Set-ItemProperty -Path $ts -Name MaxDisconnectionTime -Value 0 -Type DWord
           Set-ItemProperty -Path $ts -Name MaxIdleTime -Value 0 -Type DWord
-          # Less background load (throwaway machine)
           try { Set-MpPreference -DisableRealtimeMonitoring $true } catch { Write-Host "Defender tweak skipped" }
 
       - name: Enable RDP and create user
-        if: steps.cpu.outputs.match == 'true'
         env:
           RDP_PASSWORD: ${{ secrets.RDP_PASSWORD }}
         run: |
@@ -71,11 +80,38 @@ jobs:
           net localgroup Administrators rdpuser /add
           net localgroup "Remote Desktop Users" rdpuser /add
 
-      - name: Show connection address and keep alive
-        if: steps.cpu.outputs.match == 'true'
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # pc/master.js restores from Drive, installs the newest PC client, keeps it running, backs up every
+      # 20 minutes and saves a final backup at minute 345. The next VM starts at minute 340 and waits for
+      # this one to finish its final backup before it restores.
+      - name: Run master script and hand over
         run: |
           $ip = & tailscale ip -4
           Write-Host "Connect to: $ip   user: rdpuser"
-          tailscale status
-          $end = (Get-Date).AddMinutes(350)
-          while ((Get-Date) -lt $end) { Start-Sleep -Seconds 60 }
+          $master = Join-Path $env:GITHUB_WORKSPACE 'pc\master.js'
+          $start = Get-Date; $handed = $false; $proc = $null; $starts = 0
+          while ($true) {
+            $m = ((Get-Date) - $start).TotalMinutes
+            if (-not $handed -and $m -ge 340) {
+              gh workflow run "${{ github.workflow }}" --repo $env:GITHUB_REPOSITORY --ref $env:GITHUB_REF_NAME
+              $handed = $true
+            }
+            if ((Test-Path $master) -and $starts -lt 5 -and ($null -eq $proc -or $proc.HasExited) -and -not $handed) {
+              $env:PC_HANDOVER_MIN = [string][math]::Max(1, 345 - $m)
+              $proc = Start-Process node -ArgumentList $master -WorkingDirectory $env:GITHUB_WORKSPACE -PassThru -NoNewWindow
+              $starts++
+            }
+            if ($handed -and $null -ne $proc -and $proc.HasExited) { break }
+            if ($m -ge 354) { break }
+            Start-Sleep -Seconds 20
+          }
+
+      # Runs even when the job is cancelled or fails; does nothing if the final backup already happened.
+      - name: Final backup
+        if: always()
+        run: |
+          if (Test-Path pc\master.js) { node pc\master.js backup }
