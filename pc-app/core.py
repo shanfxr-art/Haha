@@ -119,9 +119,10 @@ class Hub:
 
 
 # ---------- built-in actions (step 3) ----------
-def build_registry(hud_show=None, grab=None):
+def build_registry(hud_show=None, grab=None, controls=True):
     reg = Registry()
     started = time.time()
+    shared = {"scale": 1.0}   # screenshot -> real screen scale, so clicks land where the AI saw the target
 
     def ping(a):
         return "pong"
@@ -136,7 +137,9 @@ def build_registry(hud_show=None, grab=None):
             from PIL import ImageGrab
             g = ImageGrab.grab
         im = g().convert("RGB")
+        shared["scale"] = 1.0
         if im.width > 1600:
+            shared["scale"] = im.width / 1600.0
             im = im.resize((1600, int(im.height * 1600 / im.width)))
         buf = io.BytesIO()
         im.save(buf, "JPEG", quality=70)
@@ -153,4 +156,10 @@ def build_registry(hud_show=None, grab=None):
 
     for n, f in (("ping", ping), ("status", status), ("screenshot", screenshot), ("show", show)):
         reg.register(n, f)
+    if controls:   # step 4: mouse, keyboard, windows, files, commands
+        try:
+            import actions
+            actions.register(reg, shared)
+        except Exception as e:
+            print("control tools not loaded: %s" % str(e)[:200], flush=True)
     return reg

@@ -34,7 +34,7 @@ try:
         except urllib.error.HTTPError: break
         except Exception: time.sleep(0.2)
     states, logs, shown, conn = [], [], [], []
-    reg = core.build_registry(hud_show=lambda t, b, s: shown.append((t, b, s)), grab=lambda: Image.new("RGB", (2400, 1350), (10, 20, 30)))
+    reg = core.build_registry(hud_show=lambda t, b, s: shown.append((t, b, s)), grab=lambda: Image.new("RGB", (2400, 1350), (10, 20, 30)), controls=False)
     hub = core.Hub(base, PCT, reg, on_state=states.append, on_log=logs.append, on_connection=conn.append, poll_timeout=5)
     threading.Thread(target=hub.run, daemon=True).start()
     time.sleep(1.5)
