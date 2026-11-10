@@ -25,6 +25,7 @@ check("click scaled", R("click", {"x": 100, "y": 200}) == "Clicked at 150,300." 
 check("right click", gui.log and R("right_click", {"x": 10, "y": 10}).startswith("Right-clicked") and gui.log[-1][2]["button"] == "right")
 check("drag", "Dragged" in R("drag", {"x1": 0, "y1": 0, "x2": 100, "y2": 100}))
 check("scroll down", R("scroll", {"direction": "down", "amount": 4}) == "Scrolled down." and gui.log[-1][1] == (-4,))
+check("click from telegram text", R("click", {"text": "10 20"}) == "Clicked at 15,30.")
 check("click bad arg", "failed" in R("click", {"x": "abc", "y": 1}))
 check("type ascii", R("type", {"text": "hi", "enter": True}) == "Typed 2 characters." and gui.log[-1][1] == ("enter",))
 R("type", {"text": "héllo"}); check("type unicode pastes, clipboard restored", ("hotkey", ("ctrl", "v"), {}) in gui.log and clip["v"] == "old")

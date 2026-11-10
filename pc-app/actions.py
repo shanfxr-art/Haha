@@ -71,6 +71,10 @@ class Control:
 
     def _xy(self, a):
         s = float(self.shared.get("scale") or 1.0)
+        if a.get("x") is None and a.get("text"):   # Telegram sends "/pc click 532 1184" as plain text
+            n = re.findall(r"-?\d+(?:\.\d+)?", str(a["text"]))
+            if len(n) >= 2:
+                a = {"x": n[0], "y": n[1]}
         return int(round(_num(a.get("x")) * s)), int(round(_num(a.get("y")) * s))
 
     def _ps(self, cmd, timeout):
@@ -108,6 +112,10 @@ class Control:
 
     def drag(self, a):
         s = float(self.shared.get("scale") or 1.0)
+        if a.get("x2") is None and a.get("text"):
+            n = re.findall(r"-?\d+(?:\.\d+)?", str(a["text"]))
+            if len(n) >= 4:
+                a = {"x1": n[0], "y1": n[1], "x2": n[2], "y2": n[3]}
         x1, y1 = _num(a.get("x1", a.get("x"))) * s, _num(a.get("y1", a.get("y"))) * s
         x2, y2 = _num(a.get("x2")) * s, _num(a.get("y2")) * s
         g = self.gui(); g.moveTo(int(x1), int(y1)); g.dragTo(int(x2), int(y2), duration=0.4, button="left")
