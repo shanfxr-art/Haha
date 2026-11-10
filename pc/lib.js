@@ -145,11 +145,14 @@ async function findPcRelease(repo, token, pattern) {
   const r = await http(GH() + "/repos/" + repo + "/releases?per_page=20", { headers: ghHeaders(token) });
   if (!r.ok) throw new Error("release list failed (" + r.status + ")");
   const re = new RegExp(pattern, "i");
+  let best = null, bestN = -1;   // GitHub's list order can shuffle (tags on the same commit), so take the highest build number instead
   for (const rel of await r.json()) {
     const a = (rel.assets || []).find(x => re.test(x.name));
-    if (a) return { tag: rel.tag_name, asset: a, sha: (rel.assets || []).find(x => x.name === a.name + ".sha256") || null };
+    if (!a) continue;
+    const m = /build(\d+)/i.exec(a.name) || /(\d+)$/.exec(rel.tag_name || ""), n = m ? Number(m[1]) : 0;
+    if (n > bestN) { bestN = n; best = { tag: rel.tag_name, asset: a, sha: (rel.assets || []).find(x => x.name === a.name + ".sha256") || null }; }
   }
-  return null;
+  return best;
 }
 async function downloadAsset(asset, token, file) {
   const r = await http(asset.url, { headers: ghHeaders(token, { Accept: "application/octet-stream" }), timeout: 600000 });
