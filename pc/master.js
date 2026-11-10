@@ -74,6 +74,7 @@ async function restore() {
 }
 
 // ---------- PC client ----------
+let installedN = 0;
 async function installClient() {
   const repo = env("PC_RELEASE_REPO"), token = env("PC_RELEASE_TOKEN");
   if (!repo) { log("client: PC_RELEASE_REPO is not set, nothing to download"); return false; }
@@ -90,6 +91,7 @@ async function installClient() {
     } else log("client: no .sha256 next to the asset, installing without a check");
     fs.rmSync(APP, { recursive: true, force: true });
     L.unzip(zip, APP);
+    installedN = rel.n || 0;
     log("client installed:", rel.asset.name, "(" + rel.tag + ")");
     return true;
   } catch (e) { log("client install failed:", e.message); return false; }
@@ -122,6 +124,15 @@ function watch(entry) {
   if (Date.now() - startedAt > 300000) restarts = 0;   // it ran 5 minutes: forget earlier crashes
   nextTry = Date.now() + Math.min(5000 * Math.pow(2, restarts), 60000); restarts++;
   startApp(entry);
+}
+async function updateIfNewer() {   // a newer PC build was released: install it and let the watchdog restart the app
+  try {
+    const rel = await L.findPcRelease(env("PC_RELEASE_REPO"), env("PC_RELEASE_TOKEN"), CFG.releasePattern);
+    if (!rel || !(rel.n > installedN)) return;
+    log("update: build", rel.n, "is newer than", installedN, "- installing");
+    if (child) { try { if (WIN) cp.spawnSync("taskkill", ["/pid", String(child.pid), "/t", "/f"], { stdio: "ignore" }); else child.kill("SIGTERM"); } catch (e) {} child = null; }
+    if (await installClient()) { nextTry = 0; restarts = 0; }
+  } catch (e) { log("update check failed:", e.message); }
 }
 function stopApp() {
   stopping = true;
@@ -169,15 +180,16 @@ async function finish() {
   await installClient();
   await hubPing();
 
-  const entry = findEntry();
+  let entry = findEntry();
   if (!entry) log("no PC client found yet; the VM stays up and backups keep running");
 
   process.on("SIGTERM", async () => { await finish(); process.exit(0); });
   process.on("SIGINT", async () => { await finish(); process.exit(0); });
 
-  let lastBackup = Date.now();
+  let lastBackup = Date.now(), lastUpdate = Date.now();
   const handoverAt = T0 + (Number(env("PC_HANDOVER_MIN")) || CFG.handoverMin) * 60000;
   while (Date.now() < handoverAt) {
+    if (Date.now() - lastUpdate >= 300000) { lastUpdate = Date.now(); await updateIfNewer(); entry = findEntry(); }
     if (entry) watch(entry);
     if (Date.now() - lastBackup >= CFG.intervalMin * 60000) { lastBackup = Date.now(); await backup("timer"); }
     await sleep(15000);
