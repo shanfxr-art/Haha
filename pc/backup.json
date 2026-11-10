@@ -1,0 +1,11 @@
+{
+  "paths": ["%WORK%"],
+  "exclude": ["*.tmp", "Cache", "node_modules"],
+  "keep": 4,
+  "intervalMin": 20,
+  "handoverMin": 345,
+  "hubData": true,
+  "driveFolder": "JarvisPC",
+  "releasePattern": "^Jarvis-PC.*\\.zip$",
+  "waitForOldVmMin": 12
+}
