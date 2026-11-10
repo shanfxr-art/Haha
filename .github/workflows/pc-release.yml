@@ -8,6 +8,7 @@ on:
   push:
     paths:
       - 'pc-app/**'
+      - '.github/workflows/pc-release.yml'
 
 permissions:
   contents: write
@@ -23,15 +24,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Check and package
         id: pkg
         run: |
-          python3 -m compileall -q pc-app
-          VN=$(grep -oP 'VERSION = "\K[^"]+' pc-app/jcore.py | head -n 1)
+          set -euo pipefail
+          # Syntax-check every Python file in the app (not just three), so a typo anywhere stops the release.
+          find pc-app -name '*.py' -not -path '*/__pycache__/*' -print0 | xargs -0 python3 -m py_compile
+          # VERSION lives in jcore.py (there is no core.py: core/ is a package).
+          VN=$(grep -oP '^VERSION\s*=\s*"\K[^"]+' pc-app/jcore.py | head -n 1 || true)
           test -n "$VN" || { echo "VERSION not found in pc-app/jcore.py"; exit 1; }
           NAME="Jarvis-PC-v${VN}-build${GITHUB_RUN_NUMBER}.zip"
           mkdir -p dist
-          (cd pc-app && zip -qr "../dist/$NAME" . -x 'test_*' -x '*__pycache__*' -x '*.pyc')
+          (cd pc-app && find . -name '__pycache__' -prune -o -type f ! -name '*.pyc' ! -name 'test_*' -print | zip -q "../dist/$NAME" -@)
+          unzip -tq "dist/$NAME"
           (cd dist && sha256sum "$NAME" > "$NAME.sha256")
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           echo "vn=$VN" >> "$GITHUB_OUTPUT"
