@@ -43,6 +43,8 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       HUB_URL: ${{ secrets.HUB_URL }}
       PC_TOKEN: ${{ secrets.PC_TOKEN }}
+      GEMINI_KEY: ${{ secrets.GEMINI_KEY }}
+      GROQ_KEY: ${{ secrets.GROQ_KEY }}
       PC_RELEASE_REPO: ${{ secrets.PC_RELEASE_REPO }}
       PC_RELEASE_TOKEN: ${{ secrets.PC_RELEASE_TOKEN }}
       GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
