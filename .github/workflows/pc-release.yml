@@ -1,0 +1,49 @@
+name: PC app release
+
+# Packages the pc-app folder as Jarvis-PC-v<version>-build<N>.zip (+ .sha256) and publishes it as a release.
+# The VM's master script downloads the newest one. It never becomes the "latest" release, so the phone
+# app's update check keeps seeing the Android release.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'pc-app/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pc-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check and package
+        id: pkg
+        run: |
+          python3 -m py_compile pc-app/core.py pc-app/hud.py pc-app/main.py
+          VN=$(grep -oP 'VERSION = "\K[^"]+' pc-app/core.py | head -n 1)
+          test -n "$VN" || { echo "VERSION not found in pc-app/core.py"; exit 1; }
+          NAME="Jarvis-PC-v${VN}-build${GITHUB_RUN_NUMBER}.zip"
+          mkdir -p dist
+          (cd pc-app && zip -qr "../dist/$NAME" . -x 'test_*' -x '__pycache__/*' -x '*.pyc')
+          (cd dist && sha256sum "$NAME" > "$NAME.sha256")
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "vn=$VN" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pc-${{ github.run_number }}
+          name: J.A.R.V.I.S. PC v${{ steps.pkg.outputs.vn }} (build ${{ github.run_number }})
+          body: PC app for the Windows VM. The VM downloads this automatically.
+          files: |
+            dist/*.zip
+            dist/*.sha256
+          fail_on_unmatched_files: true
+          make_latest: false
